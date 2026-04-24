@@ -1,0 +1,174 @@
+@using BetaBugReportPortal.Models
+
+<!-- Overlay -->
+<div class="bug-drawer-overlay" @onclick="Close"></div>
+
+<!-- Drawer -->
+<div class="bug-drawer">
+    <div class="bug-drawer-header">
+        <div>
+            <span class="text-muted small">#@Ticket!.Id</span>
+            <h5 class="mb-0">@Ticket.Title</h5>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-sm btn-outline-primary" @onclick="Edit">✏ Edit</button>
+            <button class="btn-close" @onclick="Close"></button>
+        </div>
+    </div>
+
+    <div class="bug-drawer-body">
+
+        <div class="row g-2 mb-3">
+            <div class="col-6">
+                <div class="detail-label">Priority</div>
+                <span class="bug-badge @PriorityClass(Ticket.Priority)">@Ticket.Priority</span>
+            </div>
+            <div class="col-6">
+                <div class="detail-label">Severity</div>
+                <span class="bug-badge @SeverityClass(Ticket.Severity)">@Ticket.Severity</span>
+            </div>
+            <div class="col-6">
+                <div class="detail-label">Status</div>
+                <span class="bug-badge @StatusClass(Ticket.Status)">@Ticket.Status</span>
+            </div>
+            <div class="col-6">
+                <div class="detail-label">Reproduction</div>
+                <strong>@Ticket.ReproductionLevel/5</strong>
+            </div>
+            <div class="col-6">
+                <div class="detail-label">Device &amp; OS</div>
+                <div class="small">@Ticket.DeviceOs</div>
+            </div>
+            <div class="col-6">
+                <div class="detail-label">Affected Version</div>
+                <div class="small">@Ticket.AffectedVersion</div>
+            </div>
+            <div class="col-12">
+                <div class="detail-label">Tags</div>
+                <div>
+                    @if (Ticket.Tags.Any())
+                    { @foreach (var tag in Ticket.Tags) { <span class="tag-pill me-1">@tag</span> } }
+                    else { <span class="text-muted small">—</span> }
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="detail-label">Created</div>
+                <div class="small">@FmtDateTime(Ticket.CreatedAt)</div>
+            </div>
+            <div class="col-6">
+                <div class="detail-label">Last Updated</div>
+                <div class="small">@FmtDateTime(Ticket.UpdatedAt)</div>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <div class="detail-label">Description</div>
+            <p class="mb-0 drawer-text small">@Ticket.Description</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Ticket.StepsToReproduce))
+        {
+            <div class="mb-3">
+                <div class="detail-label">STR — Steps to Reproduce</div>
+                <pre class="drawer-pre">@Ticket.StepsToReproduce</pre>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(Ticket.MediaUrl))
+        {
+            <div class="mb-3">
+                <div class="detail-label">Picture / Video Link</div>
+                <a href="@Ticket.MediaUrl" target="_blank" rel="noopener noreferrer" class="small">@Ticket.MediaUrl</a>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(Ticket.MediaFileName))
+        {
+            <div class="mb-3">
+                <div class="detail-label">Uploaded File</div>
+                <span class="small text-muted">@Ticket.MediaFileName</span>
+            </div>
+        }
+
+        <div class="mb-3">
+            <div class="detail-label">Comments (@Ticket.Comments.Count)</div>
+            @if (Ticket.Comments.Any())
+            {
+                @foreach (var c in Ticket.Comments)
+                {
+                    <div class="comment-item">
+                        <div class="comment-meta">@c.Author · @FmtDateTime(c.CreatedAt)</div>
+                        <div class="comment-text">@c.Text</div>
+                    </div>
+                }
+            }
+            else
+            {
+                <span class="text-muted small">No comments.</span>
+            }
+        </div>
+
+        <div class="mb-3">
+            <div class="detail-label">Edit History (@Ticket.EditHistory.Count)</div>
+            @if (Ticket.EditHistory.Any())
+            {
+                <table class="table table-sm" style="font-size:.78rem">
+                    <tbody>
+                        @foreach (var h in Ticket.EditHistory)
+                        {
+                            <tr>
+                                <td class="text-muted">@FmtDateTime(h.ChangedAt)</td>
+                                <td><strong>@h.Field</strong></td>
+                                <td class="text-muted">@(string.IsNullOrEmpty(h.OldValue) ? "—" : h.OldValue)</td>
+                                <td>→</td>
+                                <td>@h.NewValue</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <span class="text-muted small">No edits recorded.</span>
+            }
+        </div>
+
+    </div>
+</div>
+
+@code {
+    [Parameter] public BugTicket? Ticket { get; set; }
+    [Parameter] public EventCallback<int> OnEdit { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private async Task Edit()   => await OnEdit.InvokeAsync(Ticket!.Id);
+    private async Task Close()  => await OnClose.InvokeAsync();
+
+    private static string PriorityClass(string p) => p switch
+    {
+        "Critical" => "bug-badge--critical",
+        "High"     => "bug-badge--high",
+        "Medium"   => "bug-badge--medium",
+        _          => "bug-badge--low",
+    };
+    private static string SeverityClass(string s) => s switch
+    {
+        "Critical" => "sev-badge--critical",
+        "High"     => "sev-badge--high",
+        "Medium"   => "sev-badge--medium",
+        _          => "sev-badge--low",
+    };
+    private static string StatusClass(string s) => s switch
+    {
+        "To correct"  => "status-badge--to-correct",
+        "In Progress" => "status-badge--in-progress",
+        "Standby"     => "status-badge--standby",
+        "Duplicate"   => "status-badge--duplicate",
+        "Won't Fix"   => "status-badge--wontfix",
+        "Corrected"   => "status-badge--corrected",
+        _             => "status-badge--to-correct",
+    };
+
+    private static string FmtDateTime(DateTime d) =>
+        d.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
+}

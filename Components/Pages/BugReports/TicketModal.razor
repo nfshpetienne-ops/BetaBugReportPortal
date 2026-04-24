@@ -1,0 +1,261 @@
+@using BetaBugReportPortal.Models
+
+<!-- Backdrop -->
+<div class="modal-backdrop fade show"></div>
+
+<!-- Modal -->
+<div class="modal d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">@(IsEdit ? $"Edit Ticket #{EditingTicket!.Id}" : "New Bug Ticket")</h5>
+                <button type="button" class="btn-close" @onclick="Cancel"></button>
+            </div>
+
+            <div class="modal-body">
+
+                <!-- Priority / Severity / Version -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label required-label">Priority</label>
+                        <select class="form-select form-select-sm" @bind="_form.Priority">
+                            @foreach (var p in Priorities) { <option value="@p">@p</option> }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label required-label">Severity</label>
+                        <select class="form-select form-select-sm" @bind="_form.Severity">
+                            @foreach (var s in Severities) { <option value="@s">@s</option> }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label required-label">Affected Version</label>
+                        <input type="text" class="form-control form-control-sm @(HasError("version") ? "is-invalid" : "")"
+                               placeholder="e.g. 1.3.1" @bind="_form.AffectedVersion" @bind:event="oninput" />
+                        @if (HasError("version"))
+                        { <div class="invalid-feedback">@_errors["version"]</div> }
+                    </div>
+                </div>
+
+                <!-- Reproduction Level -->
+                <div class="mb-3">
+                    <label class="form-label required-label">Reproduction Level</label>
+                    <div class="repro-scale-group">
+                        @foreach (var level in new[] { 1, 2, 3, 4, 5 })
+                        {
+                            var lv = level;
+                            <button type="button"
+                                    class="btn btn-sm @(_form.ReproductionLevel == lv ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="() => _form.ReproductionLevel = lv">
+                                @lv/5
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <!-- Device & OS -->
+                <div class="mb-3">
+                    <label class="form-label required-label">Device &amp; OS</label>
+                    <input type="text" class="form-control form-control-sm @(HasError("device") ? "is-invalid" : "")"
+                           placeholder="e.g. iPhone 15 Pro / iOS 17.4"
+                           @bind="_form.DeviceOs" @bind:event="oninput" />
+                    @if (HasError("device"))
+                    { <div class="invalid-feedback">@_errors["device"]</div> }
+                </div>
+
+                <!-- Tags -->
+                <div class="mb-3">
+                    <label class="form-label">Tags</label>
+                    <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+                        @foreach (var tag in AvailableTags)
+                        {
+                            var t = tag;
+                            var active = _form.Tags.Contains(t);
+                            <span class="tag-toggle-pill @(active ? "active" : "")"
+                                  @onclick="() => ToggleTag(t)">@t</span>
+                        }
+                    </div>
+                </div>
+
+                <!-- Title -->
+                <div class="mb-3">
+                    <label class="form-label required-label d-flex justify-content-between">
+                        <span>Title</span>
+                        <span class="char-counter @TitleCounterClass">@_form.Title.Length / 80</span>
+                    </label>
+                    <input type="text" class="form-control form-control-sm @(HasError("title") ? "is-invalid" : "")"
+                           maxlength="80" placeholder="Short, descriptive summary of the bug"
+                           @bind="_form.Title" @bind:event="oninput" />
+                    @if (HasError("title"))
+                    { <div class="invalid-feedback">@_errors["title"]</div> }
+                </div>
+
+                <!-- Description -->
+                <div class="mb-3">
+                    <label class="form-label required-label">Description</label>
+                    <textarea class="form-control form-control-sm @(HasError("description") ? "is-invalid" : "")"
+                              rows="3" placeholder="Detailed description of the bug"
+                              @bind="_form.Description" @bind:event="oninput"></textarea>
+                    @if (HasError("description"))
+                    { <div class="invalid-feedback">@_errors["description"]</div> }
+                </div>
+
+                <!-- STR -->
+                <div class="mb-3">
+                    <label class="form-label">STR — Steps to Reproduce</label>
+                    <textarea class="form-control form-control-sm" rows="4"
+                              placeholder="1. Open the app&#10;2. Navigate to…&#10;3. Observe that…"
+                              @bind="_form.StepsToReproduce" @bind:event="oninput"></textarea>
+                </div>
+
+                <!-- Status (edit mode only) -->
+                @if (IsEdit)
+                {
+                    <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-select form-select-sm" @bind="_form.Status">
+                            @foreach (var s in Statuses) { <option value="@s">@s</option> }
+                        </select>
+                    </div>
+                }
+
+                <!-- Media link -->
+                <div class="mb-3">
+                    <label class="form-label">Picture / Video Link</label>
+                    <input type="url" class="form-control form-control-sm @(HasError("media") ? "is-invalid" : "")"
+                           placeholder="https://…"
+                           @bind="_form.MediaUrl" @bind:event="oninput" />
+                    @if (HasError("media"))
+                    { <div class="invalid-feedback">@_errors["media"]</div> }
+                </div>
+
+                <!-- File name (display only — actual upload not supported in Blazor Server without file endpoint) -->
+                <div class="mb-3">
+                    <label class="form-label">
+                        Picture / Video File Name
+                        <span class="text-muted small">(optional — for tracking purposes)</span>
+                    </label>
+                    <input type="text" class="form-control form-control-sm"
+                           placeholder="e.g. crash-video.mp4"
+                           @bind="_form.MediaFileName" @bind:event="oninput" />
+                </div>
+
+                <!-- Existing comments (edit mode) -->
+                @if (IsEdit && EditingTicket!.Comments.Any())
+                {
+                    <div class="form-section-title">Existing Comments</div>
+                    @foreach (var c in EditingTicket.Comments)
+                    {
+                        <div class="comment-item">
+                            <div class="comment-meta">@c.Author · @FmtDateTime(c.CreatedAt)</div>
+                            <div class="comment-text">@c.Text</div>
+                        </div>
+                    }
+                }
+
+                <!-- New comment -->
+                <div class="mb-3">
+                    <label class="form-label">@(IsEdit && EditingTicket!.Comments.Any() ? "Add New Comment" : "Comment")</label>
+                    <textarea class="form-control form-control-sm" rows="2"
+                              placeholder="Optional notes or context"
+                              @bind="_form.NewComment" @bind:event="oninput"></textarea>
+                </div>
+
+            </div><!-- /modal-body -->
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="Cancel">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm" @onclick="Submit">
+                    @(IsEdit ? "Save Changes" : "Create Ticket")
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly string[] Priorities   = ["Critical", "High", "Medium", "Low"];
+    private static readonly string[] Severities   = ["Critical", "High", "Medium", "Low"];
+    private static readonly string[] Statuses     = ["To correct", "In Progress", "Standby", "Duplicate", "Won't Fix", "Corrected"];
+    private static readonly string[] AvailableTags = ["UI", "In-App Purchase", "System", "Gameplay", "Mayo"];
+
+    [Parameter] public BugTicket? EditingTicket { get; set; }
+    [Parameter] public EventCallback<TicketFormModel> OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private TicketFormModel _form = new();
+    private Dictionary<string, string> _errors = new();
+
+    private bool IsEdit => EditingTicket is not null;
+
+    private string TitleCounterClass =>
+        _form.Title.Length >= 72 ? "text-danger" :
+        _form.Title.Length >= 60 ? "text-warning" : "text-muted";
+
+    protected override void OnParametersSet()
+    {
+        _errors.Clear();
+        if (EditingTicket is not null)
+        {
+            _form = new TicketFormModel
+            {
+                Priority          = EditingTicket.Priority,
+                Severity          = EditingTicket.Severity,
+                AffectedVersion   = EditingTicket.AffectedVersion,
+                DeviceOs          = EditingTicket.DeviceOs,
+                ReproductionLevel = EditingTicket.ReproductionLevel,
+                Tags              = [.. EditingTicket.Tags],
+                Title             = EditingTicket.Title,
+                Description       = EditingTicket.Description,
+                StepsToReproduce  = EditingTicket.StepsToReproduce,
+                Status            = EditingTicket.Status,
+                MediaUrl          = EditingTicket.MediaUrl,
+                MediaFileName     = EditingTicket.MediaFileName,
+                NewComment        = "",
+            };
+        }
+        else
+        {
+            _form = new TicketFormModel();
+        }
+    }
+
+    private void ToggleTag(string tag)
+    {
+        if (_form.Tags.Contains(tag)) _form.Tags.Remove(tag);
+        else _form.Tags.Add(tag);
+    }
+
+    private async Task Submit()
+    {
+        _errors.Clear();
+        if (string.IsNullOrWhiteSpace(_form.AffectedVersion))
+            _errors["version"] = "Affected Version is required.";
+        if (string.IsNullOrWhiteSpace(_form.DeviceOs))
+            _errors["device"] = "Device & OS is required.";
+        if (string.IsNullOrWhiteSpace(_form.Title))
+            _errors["title"] = "Title is required.";
+        if (string.IsNullOrWhiteSpace(_form.Description))
+            _errors["description"] = "Description is required.";
+        if (!string.IsNullOrEmpty(_form.MediaUrl) && !_form.MediaUrl.StartsWith("http"))
+            _errors["media"] = "Please enter a valid URL starting with http:// or https://";
+
+        if (_errors.Count > 0) return;
+
+        _form.AffectedVersion  = _form.AffectedVersion.Trim();
+        _form.DeviceOs         = _form.DeviceOs.Trim();
+        _form.Title            = _form.Title.Trim();
+        _form.Description      = _form.Description.Trim();
+
+        await OnSave.InvokeAsync(_form);
+    }
+
+    private async Task Cancel() => await OnCancel.InvokeAsync();
+
+    private bool HasError(string key) => _errors.ContainsKey(key);
+
+    private static string FmtDateTime(DateTime d) =>
+        d.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
+}

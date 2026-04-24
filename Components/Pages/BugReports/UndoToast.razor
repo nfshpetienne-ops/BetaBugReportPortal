@@ -1,0 +1,16 @@
+@using BetaBugReportPortal.Models
+
+<div class="undo-toast">
+    <div style="flex:1">
+        <span>Ticket #@DeletedTicketId deleted.</span>
+        <div class="undo-toast-bar"></div>
+    </div>
+    <button class="undo-btn" @onclick="Undo">Undo</button>
+</div>
+
+@code {
+    [Parameter] public int DeletedTicketId { get; set; }
+    [Parameter] public EventCallback OnUndo { get; set; }
+
+    private async Task Undo() => await OnUndo.InvokeAsync();
+}

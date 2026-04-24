@@ -1,0 +1,793 @@
+@inject LocalStorageService Storage
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<!-- ── Global error ───────────────────────────────────────── -->
+@if (_globalError is not null)
+{
+    <div class="alert alert-danger alert-dismissible mb-3" role="alert">
+        @_globalError
+        <button type="button" class="btn-close" @onclick="() => _globalError = null"></button>
+    </div>
+}
+
+<!-- ── Export bar ─────────────────────────────────────────── -->
+<div class="export-bar">
+    <span class="export-label">Export:</span>
+    <button class="btn btn-sm btn-outline-secondary" @onclick="ExportCsvAsync">⬇ CSV</button>
+    <button class="btn btn-sm btn-outline-secondary" @onclick="ExportPdfAsync">⬇ PDF</button>
+    <div style="width:1px;height:20px;background:#ddd;margin:0 .25rem"></div>
+    <button class="btn btn-sm btn-outline-primary" @onclick="OpenReportModal">📋 Create Report</button>
+    @if (_selectMode && _selectedIds.Count > 0)
+    {
+        <span class="small text-muted ms-1">@_selectedIds.Count selected</span>
+    }
+</div>
+
+<!-- ── Filter bar ─────────────────────────────────────────── -->
+<div class="filter-bar mb-2">
+    <select @bind="_filterStatus"   @bind:after="StateHasChanged">
+        <option value="">All Statuses</option>
+        @foreach (var s in Statuses) { <option value="@s">@s</option> }
+    </select>
+    <select @bind="_filterSeverity" @bind:after="StateHasChanged">
+        <option value="">All Severities</option>
+        @foreach (var s in Severities) { <option value="@s">@s</option> }
+    </select>
+    <select @bind="_filterTag"      @bind:after="StateHasChanged">
+        <option value="">All Tags</option>
+        @foreach (var t in Tags) { <option value="@t">@t</option> }
+    </select>
+    <input type="search" class="filter-search" placeholder="🔍 Search title…"
+           @bind="_filterSearch" @bind:event="oninput" @bind:after="StateHasChanged" />
+    <div style="margin-left:auto;display:flex;gap:.4rem">
+        <button class="btn btn-sm @(_selectMode ? "btn-secondary" : "btn-outline-secondary")" @onclick="ToggleSelectMode">☑ Select</button>
+        <button class="btn btn-sm btn-primary" @onclick="() => OpenTicketModal(null)">+ New Ticket</button>
+    </div>
+</div>
+
+<!-- ── Results count ──────────────────────────────────────── -->
+@{
+    var filtered = GetFiltered();
+    var sorted   = SortTickets(filtered);
+}
+<div class="small text-muted mb-2">
+    @if (_initialized)
+    {
+        <text>Showing @sorted.Count of @_tickets.Count ticket@(_tickets.Count != 1 ? "s" : "")</text>
+    }
+</div>
+
+<!-- ── Ticket table ───────────────────────────────────────── -->
+<div class="table-responsive">
+    <table class="table table-hover align-middle bug-ticket-table mb-0">
+        <thead class="table-light">
+            <tr>
+                @if (_selectMode) { <th class="row-check-col"></th> }
+                <th style="width:55px">ID</th>
+                <th style="width:95px">Priority</th>
+                <th style="width:95px">Severity</th>
+                <th>Title</th>
+                <th style="width:160px">Device &amp; OS</th>
+                <th style="width:65px">Repro</th>
+                <th style="width:110px">Tags</th>
+                <th style="width:120px">Status</th>
+                <th style="width:105px">Created</th>
+                <th style="width:100px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!_initialized)
+            {
+                <tr><td colspan="10" class="text-center text-muted py-4">Loading…</td></tr>
+            }
+            else if (!sorted.Any())
+            {
+                <tr><td colspan="@(_selectMode ? 11 : 10)" class="text-center text-muted py-4">No bug tickets match the current filters.</td></tr>
+            }
+            else
+            {
+                bool separatorShown = false;
+                foreach (var t in sorted)
+                {
+                    var isFixed = FixedStatuses.Contains(t.Status);
+                    if (isFixed && !separatorShown)
+                    {
+                        separatorShown = true;
+                        <tr>
+                            <td colspan="@(_selectMode ? 11 : 10)"
+                                style="background:#f8f9fc;padding:4px 8px;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;color:#888;font-weight:600;border-top:2px solid #dee2e6">
+                                ✓ Corrected
+                            </td>
+                        </tr>
+                    }
+                    var ticket = t;
+                    <tr @key="ticket.Id" class="@(isFixed ? "text-muted" : "")" style="@(isFixed ? "opacity:.75" : "")">
+                        @if (_selectMode)
+                        {
+                            <td class="row-check-col">
+                                <input type="checkbox" class="form-check-input"
+                                       checked="@_selectedIds.Contains(ticket.Id)"
+                                       @onchange="e => ToggleRowSelect(ticket.Id, (bool)(e.Value ?? false))" />
+                            </td>
+                        }
+                        <td class="text-muted small">#@ticket.Id</td>
+                        <td><span class="bug-badge @PriorityClass(ticket.Priority)">@ticket.Priority</span></td>
+                        <td><span class="bug-badge @SeverityClass(ticket.Severity)">@ticket.Severity</span></td>
+                        <td><span class="ticket-title-cell" title="@ticket.Title">@ticket.Title</span></td>
+                        <td class="small">@ticket.DeviceOs</td>
+                        <td class="repro-cell">@ticket.ReproductionLevel/5</td>
+                        <td>
+                            @if (ticket.Tags.Any())
+                            { @foreach (var tag in ticket.Tags) { <span class="tag-pill me-1">@tag</span> } }
+                            else { <span class="text-muted small">—</span> }
+                        </td>
+                        <td><span class="bug-badge @StatusClass(ticket.Status)">@ticket.Status</span></td>
+                        <td class="text-muted small">@FmtDate(ticket.CreatedAt)</td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <button class="btn btn-sm btn-outline-secondary py-0 px-1" title="View details"
+                                        @onclick="() => OpenDetailDrawer(ticket.Id)">🔍</button>
+                                <button class="btn btn-sm btn-outline-primary py-0 px-1" title="Edit ticket"
+                                        @onclick="() => OpenTicketModal(ticket.Id)">✏</button>
+                                <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Delete ticket"
+                                        @onclick="() => HandleDelete(ticket.Id)">🗑</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     TICKET MODAL (Create / Edit)
+══════════════════════════════════════════════════════════ -->
+@if (_showTicketModal)
+{
+    <TicketModal EditingTicket="_editingTicket"
+                 OnSave="HandleTicketSave"
+                 OnCancel="() => _showTicketModal = false" />
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     DETAIL DRAWER
+══════════════════════════════════════════════════════════ -->
+@if (_showDetailDrawer && _detailTicket is not null)
+{
+    <DetailDrawer Ticket="_detailTicket"
+                  OnEdit="id => { _showDetailDrawer = false; OpenTicketModal(id); }"
+                  OnClose="() => _showDetailDrawer = false" />
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     REPORT MODAL
+══════════════════════════════════════════════════════════ -->
+@if (_showReportModal)
+{
+    <ReportModal Tickets="SortTickets(GetFiltered())"
+                 OnExportCsv="HandleReportCsv"
+                 OnExportPdf="HandleReportPdf"
+                 OnClose="() => _showReportModal = false" />
+}
+
+<!-- ══════════════════════════════════════════════════════════
+     UNDO TOAST
+══════════════════════════════════════════════════════════ -->
+@if (_showUndoToast)
+{
+    <UndoToast DeletedTicketId="_deletedTicketId" OnUndo="HandleUndo" />
+}
+
+
+@code {
+    // ── Constants ──────────────────────────────────────────────
+    private static readonly string[] Priorities  = ["Critical", "High", "Medium", "Low"];
+    private static readonly string[] Severities  = ["Critical", "High", "Medium", "Low"];
+    private static readonly string[] Statuses    = ["To correct", "In Progress", "Standby", "Duplicate", "Won't Fix", "Corrected"];
+    private static readonly string[] Tags        = ["UI", "In-App Purchase", "System", "Gameplay", "Mayo"];
+    private static readonly HashSet<string> FixedStatuses = ["Corrected", "Won't Fix"];
+    private static readonly Dictionary<string, int> PriorityOrder = new() { ["Critical"]=0, ["High"]=1, ["Medium"]=2, ["Low"]=3 };
+    private static readonly Dictionary<string, string> PriorityToCsv = new() { ["Critical"]="P1", ["High"]="P2", ["Medium"]="P3", ["Low"]="P4" };
+
+    private const string CurrentUser        = "Etienne Bottichio";
+    private const string CurrentGameId      = "elastic-slap";
+    private const string CurrentGameName    = "Elastic Slap";
+    private const string CurrentGamePlatform = "iOS";
+    private const string CurrentGameVersion = "1.3.1";
+    private const string StorageKey         = "bugReports_v3";
+    private const string StorageKeyV2       = "bugReports_v2";
+    private const string StorageMigrKey     = "bugReports_v3_migrated";
+
+    // ── State ───────────────────────────────────────────────────
+    private List<BugTicket> _tickets = [];
+    private int _nextId = 1;
+    private bool _initialized;
+    private string? _globalError;
+
+    // Filter state
+    private string _filterStatus   = "";
+    private string _filterSeverity = "";
+    private string _filterTag      = "";
+    private string _filterSearch   = "";
+
+    // Modal/drawer state
+    private bool _showTicketModal;
+    private int? _editingTicketId;
+    private BugTicket? _editingTicket;
+
+    private bool _showDetailDrawer;
+    private BugTicket? _detailTicket;
+
+    private bool _showReportModal;
+
+    // Delete/undo state
+    private bool _showUndoToast;
+    private int _deletedTicketId;
+    private BugTicket? _deletedSnap;
+    private int _deletedIdx;
+    private CancellationTokenSource? _undoCts;
+
+    // Select mode
+    private bool _selectMode;
+    private readonly HashSet<int> _selectedIds = [];
+
+
+    // ── Lifecycle ───────────────────────────────────────────────
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized) return;
+        await LoadTicketsAsync();
+        _initialized = true;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _undoCts?.Cancel();
+        _undoCts?.Dispose();
+        await Task.CompletedTask;
+    }
+
+
+    // ── Persistence ─────────────────────────────────────────────
+    private async Task LoadTicketsAsync()
+    {
+        try
+        {
+            var json = await Storage.GetItemAsync(StorageKey);
+            if (json is not null)
+            {
+                var data = System.Text.Json.JsonSerializer.Deserialize<TicketsStorage>(json,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (data is not null)
+                {
+                    _tickets = data.Tickets;
+                    _nextId  = data.NextId;
+                    return;
+                }
+            }
+
+            // Try migrating from V2
+            await MigrateFromV2Async();
+
+            if (_tickets.Count == 0)
+                SeedData();
+
+            await SaveTicketsAsync();
+        }
+        catch (Exception ex)
+        {
+            _globalError = $"Failed to load tickets: {ex.Message}";
+        }
+    }
+
+    private async Task MigrateFromV2Async()
+    {
+        var migrated = await Storage.GetItemAsync(StorageMigrKey);
+        if (migrated is not null) return;
+
+        var json = await Storage.GetItemAsync(StorageKeyV2);
+        if (json is not null)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("tickets", out var arr))
+                {
+                    foreach (var el in arr.EnumerateArray())
+                    {
+                        var t = MapV2Element(el);
+                        _tickets.Add(t);
+                    }
+                    _nextId = _tickets.Count > 0 ? _tickets.Max(x => x.Id) + 1 : 1;
+                }
+            }
+            catch { /* ignore malformed V2 data */ }
+        }
+
+        await Storage.SetItemAsync(StorageMigrKey, "true");
+    }
+
+    private BugTicket MapV2Element(System.Text.Json.JsonElement el)
+    {
+        var statusMap = new Dictionary<string, string>
+        {
+            ["Open"] = "To correct", ["InProgress"] = "In Progress",
+            ["Fixed"] = "Corrected",  ["Closed"] = "Corrected",
+            ["WontFix"] = "Won't Fix", ["Duplicate"] = "Duplicate"
+        };
+
+        string GetStr(string prop, string def = "") =>
+            el.TryGetProperty(prop, out var v) ? v.GetString() ?? def : def;
+        int GetInt(string prop, int def = 0) =>
+            el.TryGetProperty(prop, out var v) && v.TryGetInt32(out var i) ? i : def;
+
+        var id = GetInt("id", _nextId++);
+        var rawStatus = GetStr("status", "To correct");
+        var status = statusMap.GetValueOrDefault(rawStatus, rawStatus);
+
+        var tags = new List<string>();
+        if (el.TryGetProperty("tags", out var tagsEl))
+            foreach (var tag in tagsEl.EnumerateArray())
+                tags.Add(tag.GetString() ?? "");
+
+        var comments = new List<TicketComment>();
+        if (el.TryGetProperty("comments", out var commentsEl))
+        {
+            foreach (var c in commentsEl.EnumerateArray())
+            {
+                comments.Add(new TicketComment
+                {
+                    Id        = c.TryGetProperty("id", out var cid) ? cid.GetInt32() : 1,
+                    Text      = c.TryGetProperty("text", out var ct) ? ct.GetString() ?? "" : "",
+                    Author    = c.TryGetProperty("author", out var ca) ? ca.GetString() ?? "" : "",
+                    CreatedAt = c.TryGetProperty("createdAt", out var cd) && DateTime.TryParse(cd.GetString(), out var dt) ? dt : DateTime.UtcNow,
+                });
+            }
+        }
+
+        return new BugTicket
+        {
+            Id                = id,
+            SchemaVersion     = 3,
+            SourceV1Id        = null,
+            Priority          = GetStr("priority", "Medium"),
+            Severity          = GetStr("severity", "Medium"),
+            DeviceOs          = GetStr("deviceOs"),
+            ReproductionLevel = GetInt("reproductionLevel", 5),
+            AffectedVersion   = GetStr("affectedVersion"),
+            GameId            = CurrentGameId,
+            Title             = GetStr("title"),
+            Description       = GetStr("description"),
+            StepsToReproduce  = GetStr("stepsToReproduce"),
+            MediaUrl          = GetStr("mediaUrl"),
+            MediaFileName     = GetStr("mediaFileName"),
+            Tags              = tags,
+            Status            = status,
+            Comments          = comments,
+            EditHistory       = [],
+            CreatedAt         = el.TryGetProperty("createdAt", out var ca2) && DateTime.TryParse(ca2.GetString(), out var d1) ? d1 : DateTime.UtcNow,
+            UpdatedAt         = el.TryGetProperty("updatedAt", out var ua) && DateTime.TryParse(ua.GetString(), out var d2) ? d2 : DateTime.UtcNow,
+            CreatedBy         = GetStr("createdBy", CurrentUser),
+        };
+    }
+
+    private async Task SaveTicketsAsync()
+    {
+        var data = new TicketsStorage { Tickets = _tickets, NextId = _nextId };
+        var json = System.Text.Json.JsonSerializer.Serialize(data,
+            new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+        await Storage.SetItemAsync(StorageKey, json);
+    }
+
+    private void SeedData()
+    {
+        DateTime D(int days) => DateTime.UtcNow.AddDays(-days);
+
+        _tickets =
+        [
+            Seed("Critical","Critical","iPhone 17 Pro / iOS 26.3",5,"1.3.1","App crashes on login when offline",
+                "Opening the app without internet causes an immediate crash on the login screen.",
+                "1. Disable Wi-Fi and mobile data\n2. Open the app\n3. Observe crash on login screen",
+                ["System"],"To correct","Happening consistently in production.",D(3)),
+            Seed("High","High","Samsung Galaxy S24 / Android 14",4,"1.3.0","Dark mode resets after app restart",
+                "User's dark mode preference is not persisted across sessions.",
+                "1. Enable dark mode in settings\n2. Close and reopen the app\n3. Dark mode is off",
+                ["UI"],"In Progress","Might be a SharedPreferences issue.",D(7)),
+            Seed("High","Critical","iPhone 15 Pro / iOS 26.1",5,"1.3.1","TRY AGAIN button after Game Over does not work",
+                "After losing, pressing Try Again does nothing. Share and Like buttons work fine.",
+                "1. Play the game until you lose\n2. On the Game Over screen, press \"Try Again\"\n3. Nothing happens",
+                ["Gameplay","UI"],"To correct","Reproduced on Unity 4.0 build only.",D(2)),
+            Seed("Medium","Medium","MacBook Pro / macOS 14.4",2,"1.2.9","Profile picture upload silently fails > 5 MB",
+                "Uploading a profile image larger than 5 MB shows a success toast but the image is not saved.",
+                "",["System"],"Corrected","Fixed in build 1.3.0 — server limit raised.",D(14)),
+            Seed("Medium","High","iPhone 15 Pro / iOS 26.1",5,"1.3.1","In-App Purchase restore button unresponsive",
+                "The \"Restore Purchases\" button does nothing on first tap. Second tap sometimes works.",
+                "1. Remove app\n2. Reinstall\n3. Go to Store tab\n4. Tap \"Restore Purchases\"",
+                ["In-App Purchase"],"To correct","",D(5)),
+            Seed("Low","Low","Windows 11 / Chrome 124",3,"1.3.0","Tooltip text truncated on dashboard graph",
+                "Hovering over data points shows a tooltip that cuts off the last word.",
+                "1. Go to Dashboard\n2. Hover over any bar in the weekly chart\n3. Tooltip label is clipped",
+                ["UI"],"Standby","Low priority — cosmetic only.",D(21)),
+            Seed("Low","Medium","iPad mini 4 / iOS 15.8.6",5,"1.3.1","Loading times too long on old devices",
+                "The app takes over 12 seconds to reach the main menu on older hardware.",
+                "1. Install on iPad mini 4\n2. Cold-launch the app\n3. Time to main menu",
+                ["System"],"To correct","Could not reproduce on newer devices.",D(4)),
+        ];
+        _nextId = _tickets.Count + 1;
+    }
+
+    private BugTicket Seed(string priority, string severity, string deviceOs, int repro, string version,
+        string title, string description, string steps, List<string> tags, string status,
+        string comment, DateTime createdAt)
+    {
+        var id = _nextId++;
+        return new BugTicket
+        {
+            Id                = id,
+            Priority          = priority,
+            Severity          = severity,
+            DeviceOs          = deviceOs,
+            ReproductionLevel = repro,
+            AffectedVersion   = version,
+            GameId            = CurrentGameId,
+            Title             = title,
+            Description       = description,
+            StepsToReproduce  = steps,
+            Tags              = tags,
+            Status            = status,
+            Comments          = string.IsNullOrEmpty(comment) ? [] :
+                                [new TicketComment { Id=1, Text=comment, Author=CurrentUser, CreatedAt=createdAt }],
+            EditHistory       = [],
+            CreatedAt         = createdAt,
+            UpdatedAt         = createdAt,
+            CreatedBy         = CurrentUser,
+        };
+    }
+
+
+    // ── Data helpers ────────────────────────────────────────────
+    private List<BugTicket> GetFiltered() =>
+        _tickets.Where(t =>
+            (string.IsNullOrEmpty(_filterStatus)   || t.Status   == _filterStatus)   &&
+            (string.IsNullOrEmpty(_filterSeverity) || t.Severity == _filterSeverity) &&
+            (string.IsNullOrEmpty(_filterTag)      || t.Tags.Contains(_filterTag))   &&
+            (string.IsNullOrEmpty(_filterSearch)   ||
+             t.Title.Contains(_filterSearch, StringComparison.OrdinalIgnoreCase) ||
+             t.Description.Contains(_filterSearch, StringComparison.OrdinalIgnoreCase) ||
+             t.DeviceOs.Contains(_filterSearch, StringComparison.OrdinalIgnoreCase))
+        ).ToList();
+
+    private List<BugTicket> SortTickets(List<BugTicket> list) =>
+        [.. list.OrderBy(t => FixedStatuses.Contains(t.Status) ? 1 : 0)
+                .ThenBy(t => PriorityOrder.GetValueOrDefault(t.Priority, 9))];
+
+    private List<BugTicket> GetExportTickets() =>
+        _selectMode && _selectedIds.Count > 0
+            ? SortTickets(_tickets.Where(t => _selectedIds.Contains(t.Id)).ToList())
+            : SortTickets(GetFiltered());
+
+
+    // ── Select mode ─────────────────────────────────────────────
+    private void ToggleSelectMode()
+    {
+        _selectMode = !_selectMode;
+        _selectedIds.Clear();
+    }
+
+    private void ToggleRowSelect(int id, bool selected)
+    {
+        if (selected) _selectedIds.Add(id);
+        else          _selectedIds.Remove(id);
+    }
+
+
+    // ── Modal / Drawer ──────────────────────────────────────────
+    private void OpenTicketModal(int? id)
+    {
+        _editingTicketId = id;
+        _editingTicket   = id.HasValue ? _tickets.FirstOrDefault(t => t.Id == id.Value) : null;
+        _showTicketModal = true;
+    }
+
+    private void OpenDetailDrawer(int id)
+    {
+        _detailTicket    = _tickets.FirstOrDefault(t => t.Id == id);
+        _showDetailDrawer = _detailTicket is not null;
+    }
+
+    private void OpenReportModal() => _showReportModal = true;
+
+
+    // ── CRUD ────────────────────────────────────────────────────
+    private async Task HandleTicketSave(TicketFormModel form)
+    {
+        _showTicketModal = false;
+        var now = DateTime.UtcNow;
+
+        if (_editingTicketId is null)
+        {
+            // Create
+            var ticket = new BugTicket
+            {
+                Id                = _nextId++,
+                Priority          = form.Priority,
+                Severity          = form.Severity,
+                DeviceOs          = form.DeviceOs,
+                ReproductionLevel = form.ReproductionLevel,
+                AffectedVersion   = form.AffectedVersion,
+                GameId            = CurrentGameId,
+                Title             = form.Title,
+                Description       = form.Description,
+                StepsToReproduce  = form.StepsToReproduce,
+                MediaUrl          = form.MediaUrl,
+                MediaFileName     = form.MediaFileName,
+                Tags              = [.. form.Tags],
+                Status            = "To correct",
+                Comments          = string.IsNullOrEmpty(form.NewComment) ? [] :
+                                    [new TicketComment { Id=1, Text=form.NewComment, Author=CurrentUser, CreatedAt=now }],
+                EditHistory       = [],
+                CreatedAt         = now,
+                UpdatedAt         = now,
+                CreatedBy         = CurrentUser,
+            };
+            _tickets.Add(ticket);
+        }
+        else
+        {
+            // Edit
+            var t = _tickets.FirstOrDefault(x => x.Id == _editingTicketId.Value);
+            if (t is null) return;
+
+            var changes = new List<EditHistoryEntry>();
+            void Track(string field, string oldV, string newV)
+            {
+                if (oldV != newV)
+                    changes.Add(new EditHistoryEntry { Field=field, OldValue=oldV, NewValue=newV, ChangedBy=CurrentUser, ChangedAt=now });
+            }
+
+            Track("priority",         t.Priority,                          form.Priority);
+            Track("severity",         t.Severity,                          form.Severity);
+            Track("affectedVersion",  t.AffectedVersion,                   form.AffectedVersion);
+            Track("deviceOs",         t.DeviceOs,                          form.DeviceOs);
+            Track("title",            t.Title,                             form.Title);
+            Track("description",      t.Description,                       form.Description);
+            Track("stepsToReproduce", t.StepsToReproduce,                  form.StepsToReproduce);
+            Track("reproductionLevel",t.ReproductionLevel.ToString(),      form.ReproductionLevel.ToString());
+            Track("tags",             string.Join(",", t.Tags),            string.Join(",", form.Tags));
+            Track("status",           t.Status,                            form.Status);
+
+            t.Priority          = form.Priority;
+            t.Severity          = form.Severity;
+            t.AffectedVersion   = form.AffectedVersion;
+            t.DeviceOs          = form.DeviceOs;
+            t.Title             = form.Title;
+            t.Description       = form.Description;
+            t.StepsToReproduce  = form.StepsToReproduce;
+            t.ReproductionLevel = form.ReproductionLevel;
+            t.Tags              = [.. form.Tags];
+            t.Status            = form.Status;
+            if (!string.IsNullOrEmpty(form.MediaUrl))      t.MediaUrl      = form.MediaUrl;
+            if (!string.IsNullOrEmpty(form.MediaFileName)) t.MediaFileName = form.MediaFileName;
+            if (!string.IsNullOrEmpty(form.NewComment))
+            {
+                var nextCommentId = t.Comments.Count > 0 ? t.Comments.Max(c => c.Id) + 1 : 1;
+                t.Comments.Add(new TicketComment { Id=nextCommentId, Text=form.NewComment, Author=CurrentUser, CreatedAt=now });
+            }
+            t.EditHistory.AddRange(changes);
+            t.UpdatedAt = now;
+
+            // Refresh drawer if it was showing this ticket
+            if (_showDetailDrawer && _detailTicket?.Id == _editingTicketId)
+                _detailTicket = t;
+        }
+
+        await SaveTicketsAsync();
+    }
+
+
+    // ── Delete + Undo ───────────────────────────────────────────
+    private void HandleDelete(int id)
+    {
+        var idx = _tickets.FindIndex(t => t.Id == id);
+        if (idx == -1) return;
+
+        _undoCts?.Cancel();
+        _deletedSnap      = CloneTicket(_tickets[idx]);
+        _deletedIdx       = idx;
+        _deletedTicketId  = id;
+
+        _tickets.RemoveAt(idx);
+
+        if (_showDetailDrawer && _detailTicket?.Id == id)
+            _showDetailDrawer = false;
+
+        _ = SaveAndShowToastAsync(id);
+    }
+
+    private async Task SaveAndShowToastAsync(int id)
+    {
+        await SaveTicketsAsync();
+        _showUndoToast = true;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("restartUndoAnimation");
+
+        _undoCts = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(5000, _undoCts.Token);
+            await InvokeAsync(() =>
+            {
+                _showUndoToast = false;
+                _deletedSnap   = null;
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task HandleUndo()
+    {
+        _undoCts?.Cancel();
+        if (_deletedSnap is null) return;
+
+        var insertAt = Math.Min(_deletedIdx, _tickets.Count);
+        _tickets.Insert(insertAt, _deletedSnap);
+        _showUndoToast = false;
+        _deletedSnap   = null;
+        await SaveTicketsAsync();
+    }
+
+
+    // ── CSV Export ──────────────────────────────────────────────
+    private async Task ExportCsvAsync()
+    {
+        var list = GetExportTickets();
+        if (!list.Any()) { _globalError = "No tickets to export."; return; }
+        var csv  = BuildCsv(list, null, CurrentGameVersion);
+        var slug = CurrentGameName.ToLower().Replace(" ", "-");
+        await JS.InvokeVoidAsync("downloadTextFile", $"bug-report-{slug}-v{CurrentGameVersion}.csv", csv, "text/csv;charset=utf-8;");
+    }
+
+    private async Task HandleReportCsv((List<int> ids, string name, string version) args)
+    {
+        _showReportModal = false;
+        var list = SortTickets(_tickets.Where(t => args.ids.Contains(t.Id)).ToList());
+        if (!list.Any()) return;
+        var csv  = BuildCsv(list, args.name, args.version);
+        var slug = (string.IsNullOrEmpty(args.name) ? "report" : args.name).ToLower().Replace(" ", "-").Trim('-');
+        await JS.InvokeVoidAsync("downloadTextFile", $"{slug}.csv", csv, "text/csv;charset=utf-8;");
+    }
+
+    private string BuildCsv(List<BugTicket> list, string? reportName, string gameVersion)
+    {
+        var date    = DateTime.Now.ToString("M/d/yyyy");
+        var name    = reportName ?? $"{CurrentGameName} — {CurrentGamePlatform} — V {gameVersion}";
+        var rows    = new List<string[]>
+        {
+            [name, "", "", "", "", "", "", "", date, CurrentUser],
+            ["Portal hyperlink corresponding to build used for testing","","","","","","","","",""],
+            ["- BUG REPORT -","","","","","","","","",""],
+            ["ID","Prio","Device & OS","Repro","Affected versions","Quick description","STR","Picture/Video link","Status","Comments"],
+        };
+        var unfixed = list.Where(t => !FixedStatuses.Contains(t.Status)).ToList();
+        var fix     = list.Where(t =>  FixedStatuses.Contains(t.Status)).ToList();
+
+        foreach (var t in unfixed) rows.Add(ToCsvRow(t));
+
+        if (fix.Any())
+        {
+            rows.Add(["Corrected","","","","","","","","",""]);
+            foreach (var t in fix) rows.Add(ToCsvRow(t));
+        }
+
+        return string.Join("\r\n", rows.Select(row =>
+            string.Join(",", row.Select(cell => $"\"{ (cell ?? "").Replace("\"", "\"\"") }\""))));
+    }
+
+    private string[] ToCsvRow(BugTicket t) =>
+    [
+        t.Id.ToString(),
+        PriorityToCsv.GetValueOrDefault(t.Priority, t.Priority),
+        t.DeviceOs,
+        $"{t.ReproductionLevel}/5",
+        t.AffectedVersion,
+        t.Title,
+        t.StepsToReproduce,
+        t.MediaUrl,
+        t.Status,
+        t.Comments.LastOrDefault()?.Text ?? "",
+    ];
+
+
+    // ── PDF Export ──────────────────────────────────────────────
+    private async Task ExportPdfAsync()
+    {
+        var list = GetExportTickets();
+        if (!list.Any()) { _globalError = "No tickets to export."; return; }
+        await JS.InvokeVoidAsync("exportBugReportPDF", ToJsTickets(list), null, CurrentGameVersion, CurrentUser);
+    }
+
+    private async Task HandleReportPdf((List<int> ids, string name, string version) args)
+    {
+        _showReportModal = false;
+        var list = SortTickets(_tickets.Where(t => args.ids.Contains(t.Id)).ToList());
+        if (!list.Any()) return;
+        await JS.InvokeVoidAsync("exportBugReportPDF", ToJsTickets(list), args.name, args.version, CurrentUser);
+    }
+
+    private static object[] ToJsTickets(List<BugTicket> list) =>
+        list.Select(t => (object)new
+        {
+            id                = t.Id,
+            priority          = t.Priority,
+            severity          = t.Severity,
+            deviceOs          = t.DeviceOs,
+            reproductionLevel = t.ReproductionLevel,
+            affectedVersion   = t.AffectedVersion,
+            title             = t.Title,
+            status            = t.Status,
+            tags              = t.Tags,
+            lastComment       = t.Comments.LastOrDefault()?.Text ?? "",
+        }).ToArray();
+
+
+    // ── UI helpers ──────────────────────────────────────────────
+    private static string PriorityClass(string p) => p switch
+    {
+        "Critical" => "bug-badge--critical",
+        "High"     => "bug-badge--high",
+        "Medium"   => "bug-badge--medium",
+        _          => "bug-badge--low",
+    };
+
+    private static string SeverityClass(string s) => s switch
+    {
+        "Critical" => "sev-badge--critical",
+        "High"     => "sev-badge--high",
+        "Medium"   => "sev-badge--medium",
+        _          => "sev-badge--low",
+    };
+
+    private static string StatusClass(string s) => s switch
+    {
+        "To correct"  => "status-badge--to-correct",
+        "In Progress" => "status-badge--in-progress",
+        "Standby"     => "status-badge--standby",
+        "Duplicate"   => "status-badge--duplicate",
+        "Won't Fix"   => "status-badge--wontfix",
+        "Corrected"   => "status-badge--corrected",
+        _             => "status-badge--to-correct",
+    };
+
+    private static string FmtDate(DateTime d) =>
+        d.ToLocalTime().ToString("MMM dd, yyyy");
+
+    private static BugTicket CloneTicket(BugTicket t) => new()
+    {
+        Id                = t.Id,
+        SchemaVersion     = t.SchemaVersion,
+        SourceV1Id        = t.SourceV1Id,
+        Priority          = t.Priority,
+        Severity          = t.Severity,
+        DeviceOs          = t.DeviceOs,
+        ReproductionLevel = t.ReproductionLevel,
+        AffectedVersion   = t.AffectedVersion,
+        GameId            = t.GameId,
+        Title             = t.Title,
+        Description       = t.Description,
+        StepsToReproduce  = t.StepsToReproduce,
+        MediaUrl          = t.MediaUrl,
+        MediaFileName     = t.MediaFileName,
+        Tags              = [.. t.Tags],
+        Status            = t.Status,
+        Comments          = t.Comments.Select(c => new TicketComment { Id=c.Id, Text=c.Text, Author=c.Author, CreatedAt=c.CreatedAt }).ToList(),
+        EditHistory       = t.EditHistory.Select(e => new EditHistoryEntry { Field=e.Field, OldValue=e.OldValue, NewValue=e.NewValue, ChangedBy=e.ChangedBy, ChangedAt=e.ChangedAt }).ToList(),
+        CreatedAt         = t.CreatedAt,
+        UpdatedAt         = t.UpdatedAt,
+        CreatedBy         = t.CreatedBy,
+    };
+}

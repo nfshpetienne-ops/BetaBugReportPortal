@@ -1,0 +1,112 @@
+@using BetaBugReportPortal.Models
+
+<!-- Backdrop -->
+<div class="modal-backdrop fade show"></div>
+
+<!-- Modal -->
+<div class="modal d-block" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">Create Report</h5>
+                <button type="button" class="btn-close" @onclick="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Report Name</label>
+                        <input type="text" class="form-control form-control-sm"
+                               placeholder="e.g. QA Report — Sprint 12"
+                               @bind="_reportName" @bind:event="oninput" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Game Version</label>
+                        <input type="text" class="form-control form-control-sm"
+                               placeholder="e.g. 1.3.1"
+                               @bind="_reportVersion" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <div class="mb-2 small fw-semibold text-muted">Select tickets to include:</div>
+                <div style="max-height:340px;overflow-y:auto;border:1px solid #e9ecef;border-radius:6px">
+                    @if (!Tickets.Any())
+                    {
+                        <div class="p-3 text-muted small">No tickets match the current filters.</div>
+                    }
+                    else
+                    {
+                        @foreach (var t in Tickets)
+                        {
+                            var ticket = t;
+                            <label class="d-flex align-items-center gap-2 p-2 border-bottom" style="cursor:pointer">
+                                <input type="checkbox" class="form-check-input"
+                                       checked="@_selection.Contains(ticket.Id)"
+                                       @onchange="e => Toggle(ticket.Id, (bool)(e.Value ?? false))" />
+                                <span class="bug-badge @PriorityClass(ticket.Priority)">@ticket.Priority</span>
+                                <span class="bug-badge @StatusClass(ticket.Status)">@ticket.Status</span>
+                                <span class="small"><strong>#@ticket.Id</strong> @ticket.Title</span>
+                            </label>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="Close">Cancel</button>
+                <button type="button" class="btn btn-outline-primary btn-sm" @onclick="ExportCsv">⬇ Export CSV</button>
+                <button type="button" class="btn btn-primary btn-sm" @onclick="ExportPdf">⬇ Export PDF</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<BugTicket> Tickets { get; set; } = [];
+    [Parameter] public EventCallback<(List<int> ids, string name, string version)> OnExportCsv { get; set; }
+    [Parameter] public EventCallback<(List<int> ids, string name, string version)> OnExportPdf { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private HashSet<int> _selection = [];
+    private string _reportName    = "";
+    private string _reportVersion = "1.3.1";
+
+    protected override void OnParametersSet()
+    {
+        _selection = [.. Tickets.Select(t => t.Id)];
+    }
+
+    private void Toggle(int id, bool val)
+    {
+        if (val) _selection.Add(id);
+        else     _selection.Remove(id);
+    }
+
+    private async Task ExportCsv() =>
+        await OnExportCsv.InvokeAsync(([.. _selection], _reportName, _reportVersion));
+
+    private async Task ExportPdf() =>
+        await OnExportPdf.InvokeAsync(([.. _selection], _reportName, _reportVersion));
+
+    private async Task Close() => await OnClose.InvokeAsync();
+
+    private static string PriorityClass(string p) => p switch
+    {
+        "Critical" => "bug-badge--critical",
+        "High"     => "bug-badge--high",
+        "Medium"   => "bug-badge--medium",
+        _          => "bug-badge--low",
+    };
+    private static string StatusClass(string s) => s switch
+    {
+        "To correct"  => "status-badge--to-correct",
+        "In Progress" => "status-badge--in-progress",
+        "Standby"     => "status-badge--standby",
+        "Duplicate"   => "status-badge--duplicate",
+        "Won't Fix"   => "status-badge--wontfix",
+        "Corrected"   => "status-badge--corrected",
+        _             => "status-badge--to-correct",
+    };
+}
