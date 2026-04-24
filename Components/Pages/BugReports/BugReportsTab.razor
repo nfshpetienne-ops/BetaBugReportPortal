@@ -668,10 +668,10 @@
         var name    = reportName ?? $"{CurrentGameName} — {CurrentGamePlatform} — V {gameVersion}";
         var rows    = new List<string[]>
         {
-            [name, "", "", "", "", "", "", "", date, CurrentUser],
-            ["Portal hyperlink corresponding to build used for testing","","","","","","","","",""],
-            ["- BUG REPORT -","","","","","","","","",""],
-            ["ID","Prio","Device & OS","Repro","Affected versions","Quick description","STR","Picture/Video link","Status","Comments"],
+            new[] { name, "", "", "", "", "", "", "", date, CurrentUser },
+            new[] { "Portal hyperlink corresponding to build used for testing","","","","","","","","","" },
+            new[] { "- BUG REPORT -","","","","","","","","","" },
+            new[] { "ID","Prio","Device & OS","Repro","Affected versions","Quick description","STR","Picture/Video link","Status","Comments" },
         };
         var unfixed = list.Where(t => !FixedStatuses.Contains(t.Status)).ToList();
         var fix     = list.Where(t =>  FixedStatuses.Contains(t.Status)).ToList();
@@ -680,7 +680,7 @@
 
         if (fix.Any())
         {
-            rows.Add(["Corrected","","","","","","","","",""]);
+            rows.Add(new[] { "Corrected","","","","","","","","","" });
             foreach (var t in fix) rows.Add(ToCsvRow(t));
         }
 

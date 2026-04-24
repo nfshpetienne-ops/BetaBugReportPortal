@@ -1,0 +1,59 @@
+is_global = true
+build_property.TargetFramework = net8.0
+build_property.TargetPlatformMinVersion = 
+build_property.UsingMicrosoftNETSdkWeb = true
+build_property.ProjectTypeGuids = 
+build_property.InvariantGlobalization = 
+build_property.PlatformNeutralAssembly = 
+build_property.EnforceExtendedAnalyzerRules = 
+build_property._SupportedPlatformList = Linux,macOS,Windows
+build_property.RootNamespace = BetaBugReportPortal
+build_property.RootNamespace = BetaBugReportPortal
+build_property.ProjectDir = /Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.RazorLangVersion = 8.0
+build_property.SupportLocalizedComponentNames = 
+build_property.GenerateRazorMetadataSourceChecksumAttributes = 
+build_property.MSBuildProjectDirectory = /Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal
+build_property._RazorSourceGeneratorDebug = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/App.razor]
+build_metadata.AdditionalFiles.TargetPath = QXBwLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/Components/Layout/MainLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9MYXlvdXQvTWFpbkxheW91dC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/Components/Pages/BugReports/BugReportsTab.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9CdWdSZXBvcnRzL0J1Z1JlcG9ydHNUYWIucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/Components/Pages/BugReports/DetailDrawer.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9CdWdSZXBvcnRzL0RldGFpbERyYXdlci5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/Components/Pages/BugReports/ReportModal.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9CdWdSZXBvcnRzL1JlcG9ydE1vZGFsLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/Components/Pages/BugReports/TicketModal.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9CdWdSZXBvcnRzL1RpY2tldE1vZGFsLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/Components/Pages/BugReports/UndoToast.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9CdWdSZXBvcnRzL1VuZG9Ub2FzdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/Components/Pages/Home.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Ib21lLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/Routes.razor]
+build_metadata.AdditionalFiles.TargetPath = Um91dGVzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/Users/ebottichio/Documents/Claude/BugReportFeature/v3/BetaBugReportPortal/_Imports.razor]
+build_metadata.AdditionalFiles.TargetPath = X0ltcG9ydHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
